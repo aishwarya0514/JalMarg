@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: JalMarg - Hyperlocal Urban Flood & Waterlogging Hazard Router Backend
+
+Globals:
+  Function:
+    Timeout: 20
+    MemorySize: 256
+    Runtime: python3.11
+    Tracing: Active
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref JalMargHazardsTable
+        BUCKET_NAME: !Ref JalMargEvidenceBucket
+        ENVIRONMENT: !Ref EnvironmentName
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: local
+    AllowedValues:
+      - local
+      - dev
+      - prod
+    Description: Deployment environment
+
+Resources:
+  # ============================================================================
+  # S3 Bucket for Flood Evidence Images
+  # ============================================================================
+  JalMargEvidenceBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "jalmarg-evidence-${EnvironmentName}-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT, POST]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  # ============================================================================
+  # DynamoDB Table with TTL for Active Flood Hazards
+  # ============================================================================
+  JalMargHazardsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "JalMarg_Hazards_${EnvironmentName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: geohash
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GeohashIndex
+          KeySchema:
+            - AttributeName: geohash
+              KeyType: HASH
+            - AttributeName: SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: JalMarg
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # ============================================================================
+  # API Gateway
+  # ============================================================================
+  JalMargApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+        MaxAge: "'600'"
+
+  # ============================================================================
+  # Lambda 1: Ingest Report (Rekognition + S3 + DynamoDB)
+  # ============================================================================
+  IngestReportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/
+      Handler: ingest_report.lambda_handler
+      Description: Ingests citizen flood reports, validates image with Rekognition, stores in DynamoDB with TTL
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref JalMargHazardsTable
+        - S3CrudPolicy:
+            BucketName: !Ref JalMargEvidenceBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rekognition:DetectLabels
+              Resource: "*"
+      Events:
+        PostHazards:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /hazards
+            Method: post
+        OptionsHazards:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /hazards
+            Method: options
+
+  # ============================================================================
+  # Lambda 2: Get Active Hazards (GeoJSON FeatureCollection)
+  # ============================================================================
+  GetHazardsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/
+      Handler: get_hazards.lambda_handler
+      Description: Retrieves active, non-expired waterlogging hazards as GeoJSON
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref JalMargHazardsTable
+      Events:
+        GetHazards:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /hazards
+            Method: get
+
+  # ============================================================================
+  # Lambda 3: Calculate Safe Route
+  # ============================================================================
+  CalculateRouteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/
+      Handler: calculate_route.lambda_handler
+      Description: Calculates direct vs detour safe route avoiding waterlogged underpasses
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref JalMargHazardsTable
+      Events:
+        PostRoute:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /route
+            Method: post
+        OptionsRoute:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /route
+            Method: options
+
+Outputs:
+  JalMargApiEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${JalMargApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  
+  HazardsTableName:
+    Description: "DynamoDB Table Name"
+    Value: !Ref JalMargHazardsTable
+
+  EvidenceBucketName:
+    Description: "S3 Evidence Bucket Name"
+    Value: !Ref JalMargEvidenceBucket
