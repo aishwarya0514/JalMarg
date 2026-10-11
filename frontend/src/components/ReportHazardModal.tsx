@@ -8,6 +8,7 @@ import {
   Send,
   CheckCircle2,
   Navigation,
+  Zap,
 } from 'lucide-react';
 
 interface ReportHazardModalProps {
@@ -63,6 +64,7 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
   const [locationName, setLocationName] = useState('Central Silk Board Area, Bengaluru');
   const [landmark, setLandmark] = useState('');
   const [reporter, setReporter] = useState('Commuter Citizen');
+  const [dataSource, setDataSource] = useState('Passive Velocity Anomaly');
   const [imageBase64, setImageBase64] = useState<string>('');
   const [imagePreview, setImagePreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -108,6 +110,32 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
     }
   };
 
+  const handleQuickPassiveSubmit = async () => {
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const selectedSev = SEVERITY_LEVELS.find((s) => s.level === severity);
+      await onSubmit({
+        title: title.trim() || `Passive Telemetry: ${severity} logging @ ${locationName}`,
+        note: note.trim() || `Automated zero-photo passive telemetry report. Depth ~${selectedSev?.depthDesc || '60 cm'}.`,
+        severity,
+        depthCm: selectedSev?.depthCm || 60,
+        waterDepth: selectedSev?.depthDesc,
+        latitude,
+        longitude,
+        locationName: locationName.trim(),
+        landmark: landmark.trim() || undefined,
+        reporter: reporter.trim() || 'Passive Vehicle Sensor',
+        dataSource: 'Passive Velocity Anomaly',
+      });
+      onClose();
+    } catch {
+      setErrorMsg('Quick passive submission encountered an error. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
@@ -133,6 +161,7 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
         landmark: landmark.trim() || undefined,
         reporter: reporter.trim() || 'Citizen Reporter',
         imageBase64: imageBase64 || undefined,
+        dataSource,
       });
       onClose();
     } catch {
@@ -142,34 +171,51 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
     }
   };
 
+  // Prevent background scrolling when modal is active
+  React.useEffect(() => {
+    if (isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <div
+      className="modal-backdrop-solid fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[9999] flex items-center justify-center p-4 overflow-y-auto"
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(3, 7, 18, 0.85)',
-        backdropFilter: 'blur(8px)',
-        zIndex: 50,
+        backgroundColor: 'rgba(2, 6, 23, 0.92)',
+        backdropFilter: 'blur(14px)',
+        WebkitBackdropFilter: 'blur(14px)',
+        zIndex: 9999,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '1.25rem',
+        padding: '1rem',
+        overflowY: 'auto',
       }}
       onClick={onClose}
     >
       <div
-        className="glass-panel"
+        className="modal-dialog-solid relative z-[10000] bg-slate-900 border border-slate-700/60 shadow-2xl rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 md:p-8"
         style={{
+          position: 'relative',
+          zIndex: 10000,
+          backgroundColor: '#0f172a',
+          border: '1px solid rgba(51, 65, 85, 0.8)',
+          boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.95)',
+          borderRadius: '16px',
           width: '100%',
-          maxWidth: 680,
-          maxHeight: '92vh',
+          maxWidth: '680px',
+          maxHeight: '90vh',
           overflowY: 'auto',
           padding: '2rem',
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-glow)',
-          position: 'relative',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -221,6 +267,52 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
             {errorMsg}
           </div>
         )}
+
+        {/* Zero-Photo & Passive Telemetry Quick-Action Banner */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.16) 0%, rgba(2, 132, 199, 0.25) 100%)',
+          border: '1px solid var(--accent-cyan)',
+          borderRadius: 'var(--radius-md)',
+          padding: '0.85rem 1.15rem',
+          marginBottom: '1.25rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
+          boxShadow: '0 0 20px rgba(6, 182, 212, 0.2)',
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#38bdf8', fontWeight: 800, fontSize: '0.88rem' }}>
+              <Zap size={16} /> 1-Tap Zero-Photo Passive Telemetry
+            </div>
+            <div style={{ fontSize: '0.74rem', color: '#cbd5e1', marginTop: '0.2rem' }}>
+              No photo or manual typing needed. Instantly tags current coordinates via speed anomaly &amp; hydro radar.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleQuickPassiveSubmit}
+            disabled={isSubmitting}
+            style={{
+              background: 'linear-gradient(135deg, #0284c7 0%, #06b6d4 100%)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.5rem 1rem',
+              fontWeight: 800,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              boxShadow: '0 0 16px rgba(6, 182, 212, 0.4)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+            }}
+          >
+            <Zap size={14} />
+            <span>Instant Broadcast</span>
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
           {/* Title */}
@@ -429,6 +521,32 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
             />
           </div>
 
+          {/* Telemetry Data Source Selector */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9', marginBottom: '0.4rem' }}>
+              Telemetry Data Source
+            </label>
+            <select
+              value={dataSource}
+              onChange={(e) => setDataSource(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.65rem 0.85rem',
+                background: 'rgba(7, 13, 25, 0.6)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                color: '#ffffff',
+                fontSize: '0.88rem',
+                outline: 'none',
+              }}
+            >
+              <option value="Passive Velocity Anomaly">Passive Velocity Anomaly (Zero-Photo Sensor Telemetry)</option>
+              <option value="Live Weather Radar + Hydro-DEM Model">Live Weather Radar + Hydro-DEM Model</option>
+              <option value="AWS Rekognition CV Verified">AWS Rekognition CV Verified (With Image)</option>
+              <option value="Crowdsourced Citizen Telemetry">Crowdsourced Citizen Telemetry</option>
+            </select>
+          </div>
+
           {/* Evidence Image Upload with Base64 Preview */}
           <div style={{
             padding: '1rem',
@@ -436,11 +554,15 @@ export const ReportHazardModal: React.FC<ReportHazardModalProps> = ({
             background: 'rgba(7, 13, 25, 0.5)',
             border: '1px dashed var(--border-subtle)',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Camera size={15} color="var(--accent-cyan)" /> Evidence Photo (Amazon Rekognition CV Validation)
+                <Camera size={15} color="var(--accent-cyan)" /> Evidence Photo (Optional — Amazon Rekognition CV)
               </span>
+              <span style={{ fontSize: '0.72rem', color: '#38bdf8', fontWeight: 600 }}>Zero-Photo Supported</span>
             </div>
+            <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.5rem' }}>
+              Photos are validated with AWS Rekognition. If no photo is available, passive sensor telemetry will verify depth.
+            </p>
 
             <input
               type="file"

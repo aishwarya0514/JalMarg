@@ -60,6 +60,9 @@ def _decimal_to_native(obj: Any) -> Any:
 
 def save_hazard(hazard: Dict[str, Any]) -> Dict[str, Any]:
     """Saves a hazard record to DynamoDB and memory cache."""
+    if not hazard.get("id"):
+        import uuid
+        hazard["id"] = f"haz-{uuid.uuid4().hex[:8]}"
     # Ensure standard PK / SK for DynamoDB
     item = dict(hazard)
     item["PK"] = "HAZARD"
@@ -122,3 +125,38 @@ def get_hazard_by_id(hazard_id: str) -> Optional[Dict[str, Any]]:
             pass
 
     return _MEMORY_HAZARDS.get(hazard_id)
+
+
+def delete_hazard_photo(hazard_id: str) -> Optional[Dict[str, Any]]:
+    """Removes photo from a hazard record while preserving all other hazard details."""
+    table = _get_dynamodb_table()
+    if table:
+        try:
+            table.update_item(
+                Key={"PK": "HAZARD", "SK": hazard_id},
+                UpdateExpression="SET imageUrl = :val",
+                ExpressionAttributeValues={":val": ""},
+            )
+        except Exception as e:
+            print(f"[Warning] DynamoDB photo update failed: {e}")
+
+    if hazard_id in _MEMORY_HAZARDS:
+        _MEMORY_HAZARDS[hazard_id]["imageUrl"] = ""
+        return _MEMORY_HAZARDS[hazard_id]
+    return None
+
+
+def delete_hazard(hazard_id: str) -> bool:
+    """Deletes an entire hazard record."""
+    table = _get_dynamodb_table()
+    if table:
+        try:
+            table.delete_item(Key={"PK": "HAZARD", "SK": hazard_id})
+        except Exception as e:
+            print(f"[Warning] DynamoDB delete failed: {e}")
+
+    if hazard_id in _MEMORY_HAZARDS:
+        del _MEMORY_HAZARDS[hazard_id]
+        return True
+    return False
+
