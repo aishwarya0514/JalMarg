@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "jalmarg-dev"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-p8nls96ffrlw"
+s3_prefix = "jalmarg-dev"
+region = "us-east-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "EnvironmentName=\"dev\"",
+    "GeoapifyApiKey=\"\""
+]
+image_repositories = []

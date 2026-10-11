@@ -24,6 +24,12 @@ Parameters:
       - prod
     Description: Deployment environment
 
+  GeoapifyApiKey:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: Optional Geoapify API Key for live Bengaluru geocoding
+
 Resources:
   # ============================================================================
   # S3 Bucket for Flood Evidence Images
@@ -172,6 +178,44 @@ Resources:
           Properties:
             RestApiId: !Ref JalMargApi
             Path: /route
+            Method: options
+
+  # ============================================================================
+  # Lambda 4: Geocode & Autocomplete Service
+  # ============================================================================
+  GeocodeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambdas/
+      Handler: geocode_service.lambda_handler
+      Description: Resolves user location queries within Bengaluru and provides debounced autocomplete
+      Environment:
+        Variables:
+          GEOAPIFY_API_KEY: !Ref GeoapifyApiKey
+      Events:
+        GetAutocomplete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /geocode/autocomplete
+            Method: get
+        GetSearch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /geocode/search
+            Method: get
+        OptionsAutocomplete:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /geocode/autocomplete
+            Method: options
+        OptionsSearch:
+          Type: Api
+          Properties:
+            RestApiId: !Ref JalMargApi
+            Path: /geocode/search
             Method: options
 
 Outputs:

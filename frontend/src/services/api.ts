@@ -9,7 +9,7 @@ import type {
 import opencityDataset from '../data/opencity_flood_locations.json';
 import recordedDemoRoutes from '../data/recorded_demo_routes.json';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://2uz5tcl3gi.execute-api.us-east-1.amazonaws.com/Prod';
 
 export interface KnownLocation {
   aliases: string[];
